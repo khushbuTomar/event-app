@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: projection-service-config
+  namespace: live-knowledge
+data:
+    SPRING_DATASOURCE_URL: jdbc:postgresql://projection-postgres:5432/projection

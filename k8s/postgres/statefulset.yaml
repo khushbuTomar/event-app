@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: projection-postgres
+  namespace: live-knowledge
+spec:
+  serviceName: projection-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: projection-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: projection-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17.10
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: projection
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: projection-postgres-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: projection-postgres-credentials
+                  key: password
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

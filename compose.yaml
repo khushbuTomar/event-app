@@ -1,0 +1,110 @@
+services:
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: live-knowledge-kafka
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: CONTROLLER://:9093,PLAINTEXT://:9092,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  kafka-init:
+    image: apache/kafka:4.0.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /opt/kafka/bin/kafka-topics.sh
+      - --bootstrap-server
+      - kafka:9092
+      - --create
+      - --if-not-exists
+      - --topic
+      - wiki-change
+      - --partitions
+      - "3"
+      - --replication-factor
+      - "1"
+
+  kafka-ui:
+    image: kafbat/kafka-ui:latest
+    container_name: live-knowledge-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  postgres:
+    image: postgres:17
+    container_name: live-knowledge-postgres
+    environment:
+      POSTGRES_DB: projection
+      POSTGRES_USER: projection
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-projection}
+    ports:
+      - "5432:5432"
+    volumes:
+      - projection-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projection -d projection"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ingestion-publisher:
+    build:
+      context: .
+      dockerfile: ingestion-publisher/Dockerfile
+    container_name: live-knowledge-ingestion-publisher
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: wiki-change
+
+  projection-service:
+    build:
+      context: .
+      dockerfile: projection-service/Dockerfile
+    container_name: live-knowledge-projection-service
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: kafka
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/projection
+      SPRING_DATASOURCE_USERNAME: projection
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-projection}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: wiki-change
+      KAFKA_CONSUMER_GROUP: projection-service
+
+volumes:
+  kafka-data: {}
+  projection-postgres-data: {}
