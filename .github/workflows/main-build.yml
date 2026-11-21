@@ -1,0 +1,74 @@
+name: Main Build and Publish
+
+# A merge creates a new commit on main. This workflow releases that exact commit;
+# it never publishes an image directly from a feature branch or pull request.
+on:
+  push:
+    branches:
+      - main
+
+# Default permission for every job. Publishing is granted only to the release job.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+    secrets: inherit
+
+  publish-projection-service:
+    name: Publish projection-service image
+    needs: verify
+    runs-on: ubuntu-latest
+
+    # GITHUB_TOKEN is short-lived and scoped to this job. No personal access token is needed.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout merged source
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Container image names must be lowercase. The repository owner may contain capitals.
+      - name: Derive image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}/projection-service" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: projection-service/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Attach a machine-readable inventory of this image's OS and library
+          # components to the pushed image manifest.
+          sbom: true
+
+          # `main` is a friendly, moving pointer. The SHA tag is traceable;
+          # deployments will later use the immutable digest emitted by this build.
+          tags: |
+            ${{ steps.image.outputs.name }}:main
+            ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

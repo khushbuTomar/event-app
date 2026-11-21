@@ -1,7 +1,7 @@
 services:
   kafka:
     image: apache/kafka:4.0.0
-    container_name: live-knowledge-kafka
+    container_name: event-app-kafka
     ports:
       - "29092:29092"
     environment:
@@ -74,6 +74,8 @@ services:
       retries: 10
 
   ingestion-publisher:
+    profiles:
+      - publisher
     build:
       context: .
       dockerfile: ingestion-publisher/Dockerfile

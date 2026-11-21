@@ -1,0 +1,110 @@
+name: Main Pull Request CI
+
+# Run when a PR targets main. `branches` here means the destination/base branch,
+# not the feature branch being merged.
+on:
+  pull_request:
+    branches:
+      - main
+    # These are the normal PR lifecycle events we want to verify.
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+# Verification has read-only access. The internal-PR preview job below receives
+# narrowly scoped package/comment permissions of its own.
+permissions:
+  contents: read
+
+# Keep only the newest run for each PR. A new commit cancels its obsolete CI run.
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # This job delegates the common test setup to our reusable child workflow.
+  # `inherit` passes the caller's repository secrets, including JAVA_VERSION.
+  verify:
+    uses: ./.github/workflows/verify.yml
+    secrets: inherit
+
+  publish-pr-preview:
+    name: Build PR preview image
+    needs: verify
+    # Forked PRs do not receive write-capable tokens. Their verification still runs,
+    # but they must never be allowed to publish an image or write a PR comment.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout proposed merge
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Derive image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}/projection-service" >> "$GITHUB_OUTPUT"
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish PR preview image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: projection-service/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Attach a machine-readable inventory of this image's OS and library
+          # components to the pushed image manifest.
+          sbom: true
+
+          # The friendly tag moves to the latest commit in this PR. The second
+          # tag and digest identify exactly what was built.
+          tags: |
+            ${{ steps.image.outputs.name }}:pr-${{ github.event.pull_request.number }}
+            ${{ steps.image.outputs.name }}:pr-${{ github.event.pull_request.number }}-sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      # Report vulnerabilities in the image without blocking this PR yet.
+      # Once we understand the findings and define an exception process, we can
+      # change exit-code to 1 and make selected severities a merge requirement.
+      - name: Scan PR preview image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.name }}:pr-${{ github.event.pull_request.number }}
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Add or update preview image comment
+        uses: actions/github-script@v8
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          PREVIEW_TAG: pr-${{ github.event.pull_request.number }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        with:
+          script: await require('./.github/scripts/update-pr-image-comment.cjs')({ github, context })

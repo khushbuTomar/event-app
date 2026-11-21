@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/aakashRepoCodes/event-driven-service-architecture.git
+    repoURL: https://github.com/khushbuTomar/event-app.git
     targetRevision: main
     path: k8s
     directory:
