@@ -17,7 +17,7 @@ spec:
         - name: ghcr-pull-credentials
       containers:
         - name: projection-service
-          image: ghcr.io/aakashrepocodes/event-driven-service-architecture/projection-service@sha256:e9b0da69909040e71f88cdb472f6c1af66d3dff9aab75afa4ffe93191985e002
+          image: ghcr.io/khushbutomar/event-app/projection-service@sha256:af03e7c22bda7a4d4bef14994764e06349dba4cbd7ec4e932a931f68e4d6a326
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
