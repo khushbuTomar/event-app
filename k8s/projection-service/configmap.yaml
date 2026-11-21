@@ -4,4 +4,6 @@ metadata:
   name: projection-service-config
   namespace: live-knowledge
 data:
-    SPRING_DATASOURCE_URL: jdbc:postgresql://projection-postgres:5432/projection
+  SPRING_PROFILES_ACTIVE: kafka
+  SPRING_DATASOURCE_URL: jdbc:postgresql://projection-postgres:5432/projection
+  KAFKA_BOOTSTRAP_SERVERS: host.minikube.internal:29092
