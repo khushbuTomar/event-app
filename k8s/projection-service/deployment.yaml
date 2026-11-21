@@ -13,8 +13,6 @@ spec:
       labels:
         app.kubernetes.io/name: projection-service
     spec:
-      imagePullSecrets:
-        - name: ghcr-pull-credentials
       containers:
         - name: projection-service
           image: ghcr.io/khushbutomar/event-app/projection-service@sha256:af03e7c22bda7a4d4bef14994764e06349dba4cbd7ec4e932a931f68e4d6a326
