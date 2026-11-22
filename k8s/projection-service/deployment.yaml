@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: projection-service
-          image: ghcr.io/khushbutomar/event-app/projection-service@sha256:3007ecc22740c0a58e3aebb07ca619ccf4fc2485f0cbd3059db1f4cf0979cba2
+          image: ghcr.io/khushbutomar/event-app/projection-service@sha256:49014f49c314634a7cd6ad449d906d06078addb9bad3ac64ceff6a32f5178ee9
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
